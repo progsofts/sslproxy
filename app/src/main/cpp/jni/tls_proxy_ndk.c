@@ -30,10 +30,10 @@
     do { fprintf(stderr, "%lu pid:%u t:%d, ", getcurtimestamp(), getpid(), sum); perror(msg); } while(0)
 
 #define error(msg) \
-    do { fprintf(stderr, "%lu pid:%u t:%d, ", getcurtimestamp() getpid(), sum); perror(msg); exit(EXIT_FAILURE); } while (0)
+    do { fprintf(stderr, "%lu pid:%u t:%d, ", getcurtimestamp(), getpid(), sum); perror(msg); exit(EXIT_FAILURE); } while (0)
 
 #define info(format, args...) \
-    do { printf("%lu pid:%u t:%d, ", getcurtimestamp() getpid(), sum); printf(format, ##args); } while (0)
+    do { printf("%lu pid:%u t:%d, ", getcurtimestamp(), getpid(), sum); printf(format, ##args); } while (0)
 
 #define log(format, args...) \
     do { printf(format, ##args); } while (0)
@@ -59,7 +59,7 @@ unsigned long getcurtimestamp(void) {
 }
 
 
-/* �ж�Ϊ����IP��ַ */
+/* 判断为本地IP地址 */
 bool is_private_ipaddr(struct sockaddr_in* original_server_addr) {
     unsigned long serverip = htonl(original_server_addr->sin_addr.s_addr);
 
@@ -74,7 +74,7 @@ bool is_private_ipaddr(struct sockaddr_in* original_server_addr) {
     return false;
 }
 
-/* ����ͻ��˴��������˿� */
+/* 面向客户端创建监听端口 */
 int socket_to_client_init(short int port) {
     int sockfd;
     int on = 1;
@@ -104,7 +104,7 @@ int socket_to_client_init(short int port) {
 }
 
 
-/* ��Ŀ��Դվ����������socket���� */
+/* 向目的源站服务器发起socket连接 */
 int get_socket_to_server(struct sockaddr_in* original_server_addr) {
     int sockfd;
 
@@ -120,7 +120,7 @@ int get_socket_to_server(struct sockaddr_in* original_server_addr) {
     return sockfd;
 }
  
-/* ���ܿͻ��˷��ͽ���socket���� */
+/* 接受客户端发送建联socket连接 */
 int get_socket_to_client(int socket, struct sockaddr_in* original_server_addr) {
     int client_fd;
     struct sockaddr_in client_addr;
@@ -158,7 +158,7 @@ int get_socket_to_client(int socket, struct sockaddr_in* original_server_addr) {
     return client_fd;
 }
 
-/* ��ȡCA��֤���ļ������ڻ�ȡski����֤��aki */
+/* 读取CA根证书文件，用于获取ski至子证书aki */
 X509 *get_root_cert(void) {
     BIO *bio;
     X509 *x509;
@@ -175,14 +175,14 @@ X509 *get_root_cert(void) {
         return 0;
     }
 
-    //��ȷ���Ƿ�������
+    //待确认是否有问题
     while ((x509 = PEM_read_bio_X509(bio, NULL, NULL, NULL)) != NULL) {
         return x509;
     }
     return 0;
 } 
 
-/* ����CA��֤����֤���� */
+/* 设置CA根证书至证书链 */
 int set_root_cert_chain(SSL_CTX *ctx) {
     BIO *bio;
     X509 *x509;
@@ -212,7 +212,7 @@ int set_root_cert_chain(SSL_CTX *ctx) {
     return 1;
 } 
 
-/* ����SSL�� */
+/* 载入SSL库 */
 void SSL_init() {
     SSL_library_init();
     SSL_load_error_strings();
@@ -245,7 +245,7 @@ FILE *create_file(const char *path) {
 }
 
 static void client_keylog_callback(const SSL *ssl, const char *line) {
-    FILE *fp = create_file(KEYLOG_FILES); //��ʱ��д����������ļ���
+    FILE *fp = create_file(KEYLOG_FILES); //暂时都写入服务器的文件内
     if (fp != NULL) {
         write_file(fp, line);
     }
@@ -260,7 +260,7 @@ static void server_keylog_callback(const SSL *ssl, const char *line) {
     log("S KEYLOG: %s\n", line);
 }
 
-/* ��Ŀ��Դ����������SSL���� */ 
+/* 向目的源服务器建立SSL连接 */
 SSL* SSL_to_server_init(int socket) {
     SSL_CTX *ctx;
 
@@ -277,7 +277,7 @@ SSL* SSL_to_server_init(int socket) {
     return ssl;
 }
  
-/* ��ͻ��˽���SSL���ӣ���ҪΪ׼����֤���ļ���˽Կ */ 
+/* 向客户端建立SSL连接，主要为准备子证书文件和私钥 */
 SSL* SSL_to_client_init(int socket, X509 *cert, EVP_PKEY *key) {
     SSL_CTX *ctx;
     ctx = SSL_CTX_new(SSLv23_server_method());
@@ -308,7 +308,7 @@ SSL* SSL_to_client_init(int socket, X509 *cert, EVP_PKEY *key) {
     return ssl;
 }
 
-/* �ر�SSL���� */  
+/* 关闭SSL连接 */
 void SSL_terminal(SSL *ssl) {
     SSL_CTX *ctx = SSL_get_SSL_CTX(ssl);
     SSL_shutdown(ssl);
@@ -317,7 +317,7 @@ void SSL_terminal(SSL *ssl) {
         SSL_CTX_free(ctx);
 }
 
-/* ��ȡ֤���˽Կ�͹�Կ��Ϣ����֤��͸�֤�鹫�ã�����ʵҲ����root��֤��ǩ��˽Կ */ 
+/* 读取证书的私钥和公钥信息（子证书和根证书公用），其实也用于root根证书签名私钥 */
 EVP_PKEY* create_key() {
     EVP_PKEY *key = EVP_PKEY_new();
     RSA *rsa = RSA_new();
@@ -335,7 +335,7 @@ EVP_PKEY* create_key() {
     return key;
 }
 
-/* α����֤�飬�ӷ�������ȡ��֤����Ϊģ�壬�ų�������Ϣ�����ø�֤��˽Կǩ�� */ 
+/* 伪造子证书，从服务器获取子证书作为模板，排除部分信息，并用根证书私钥签名 */
 X509* create_fake_certificate(SSL* ssl_to_server, EVP_PKEY *key) {
     //unsigned char buffer[128] = { 0 };
     int location;
@@ -354,7 +354,7 @@ X509* create_fake_certificate(SSL* ssl_to_server, EVP_PKEY *key) {
     X509_set_version(fake_x509, X509_get_version(server_x509));
 
     // huangtest begin
-    /* �Ӹ�֤���ȡski */
+    /* 从根证书获取ski */
     if (root_x509 != NULL) {
         for (location = X509_get_ext_count(root_x509) - 1; location >= 0; location--)
         {
@@ -374,7 +374,7 @@ X509* create_fake_certificate(SSL* ssl_to_server, EVP_PKEY *key) {
         ex = X509_get_ext(fake_x509, location);
         NID = OBJ_obj2nid(X509_EXTENSION_get_object(ex));
         #if 0
-        /* ��ȡ��֤���ski��ʵ�ʲ��������Ϣ */
+        /* 获取子证书的ski，实际不改这个信息 */
         if (NID == NID_subject_key_identifier) {
             leaf_ski = (unsigned char *)ex->value->data;
             log("ski length:%d, string:%08x%08x%08x%08x%08x%04x\n", ex->value->length
@@ -386,7 +386,7 @@ X509* create_fake_certificate(SSL* ssl_to_server, EVP_PKEY *key) {
                 , ntohs(*(unsigned short *)(leaf_ski+20)));
         }
         #endif
-        /* ��ȡ��֤��aki��Ϣ�������滻�¸�֤���ski��Ϣ */
+        /* 获取子证书aki信息，用于替换新根证书的ski信息 */
         if ((NID == NID_authority_key_identifier) && (root_ski != NULL)) {
             leaf_aki = (unsigned char *)(X509_EXTENSION_get_data(ex)->data);
             root_aki_len = X509_EXTENSION_get_data(ex)->length;
@@ -402,7 +402,7 @@ X509* create_fake_certificate(SSL* ssl_to_server, EVP_PKEY *key) {
                 , ntohl(*(unsigned int *)(leaf_aki+16))
                 , ntohs(*(unsigned short *)(leaf_aki+20)));
             #endif
-            /* ��ʽ��̫�ã���ħ��������ȷ�����滻��Ϣ */
+            /* 格式不太好，用魔鬼数字来确定可替换信息 */
             if ((root_aki_len == 24) && (root_ski_len == 22)) {
                 memcpy(leaf_aki + 4, root_ski + 2, 20);
             } else {
@@ -410,25 +410,25 @@ X509* create_fake_certificate(SSL* ssl_to_server, EVP_PKEY *key) {
             }
         }
 
-        /* ��������չ��Ϣ */
-        if ((NID == NID_key_usage)             //�̳�
-            || (NID == NID_basic_constraints)  //�̳�
-            || (NID == NID_subject_alt_name)   //�̳�
-            || (NID == NID_ext_key_usage)      //�̳�
-            || (NID == NID_authority_key_identifier) //��Ҫ�޸�
-            || (NID == NID_subject_key_identifier)   //������ʵ��Ӧ������֤��Ĺ�Կɢ�У�Э��Ҫ��������ظ�����
-            || (NID == NID_ct_precert_scts))  //��֪���Ƿ���Ҫ����
+        /* 保留的扩展信息 */
+        if ((NID == NID_key_usage)             //继承
+            || (NID == NID_basic_constraints)  //继承
+            || (NID == NID_subject_alt_name)   //继承
+            || (NID == NID_ext_key_usage)      //继承
+            || (NID == NID_authority_key_identifier) //需要修改
+            || (NID == NID_subject_key_identifier)   //保留，实际应该是子证书的公钥散列，协议要求随机不重复即可
+            || (NID == NID_ct_precert_scts))  //不知道是否需要保留
             continue;
-        X509_delete_ext(fake_x509, location);     //ȫ��������ʱ���� todo
+        //X509_delete_ext(fake_x509, location);     全部保留暂时测试
     }
     // huangtest end
 
-    /* �޸����к� */    
+    /* 修改序列号 */
     ASN1_INTEGER *a = X509_get_serialNumber(fake_x509);
     a->data[0] = a->data[0] + 1;
     //    ASN1_INTEGER_set(X509_get_serialNumber(fake_x509), 4);
 
-    /* ��дCA��������Ϣ��ʵ����ô�֤�������ȡ������д��˵������͸�֤��һһ�� */
+    /* 重写CA发行者信息，实际最好从证书里面读取，这里写死说明必须和根证书一一绑定 */
     X509_NAME *issuer = X509_NAME_new();
     //    length = X509_NAME_get_text_by_NID(issuer, NID_organizationalUnitName, buffer, 128);
     //    buffer[length] = ' ';
@@ -455,10 +455,10 @@ X509* create_fake_certificate(SSL* ssl_to_server, EVP_PKEY *key) {
     //    X509_set_notAfter(fake_x509, X509_get_notAfter(server_x509));
     //    X509_set_subject_name(fake_x509, X509_get_subject_name(server_x509));
 
-    /* ��Ҫд�빫Կ */    
+    /* 重要写入公钥 */
     X509_set_pubkey(fake_x509, key);
     //    X509_add_ext(fake_x509, X509_get_ext(server_x509, -1), -1);
-    /* ��CA˽Կǩ����ʵ��Ӧ�����ֹ�Կ����֤�鹫Կ��˽Կ�Ǹ�֤��˽Կ����proxy����˵������һ�� */
+    /* 用CA私钥签名，实际应该区分公钥是子证书公钥，私钥是根证书私钥，但proxy简单来说可以用一个 */
     X509_sign(fake_x509, key, EVP_sha256());
 
     //    X509_print_fp(stderr, fake_x509);
@@ -522,7 +522,7 @@ void write_connectinfo(int socket_to_client, int socket_to_server) {
     fclose(fp);
 }
 
-/* ����ͻ��˺ͷ�����֮����Ϣ���ݣ�ֱ�����ӹرջ��쳣 */ 
+/* 处理客户端和服务器之间消息传递，直到连接关闭或异常 */
 int transfer(SSL *ssl_to_client, SSL *ssl_to_server, bool looped) {
     int c_out = 0;
     int c_bytes = 0;
@@ -531,7 +531,7 @@ int transfer(SSL *ssl_to_client, SSL *ssl_to_server, bool looped) {
     int socket_to_client = SSL_get_fd(ssl_to_client);
     int socket_to_server = SSL_get_fd(ssl_to_server);
     int ret;
-    char buffer[128 * 1024] = { 0 }; // ���ﻺ�岻�������ܵ���SSL_read��������
+    char buffer[128 * 1024] = { 0 }; // 这里缓冲不够，可能导致SSL_read读不完整
     int maxloop = 0;
     int maxloop2 = 0;
     int maxloop3 = 0;
@@ -574,11 +574,11 @@ int transfer(SSL *ssl_to_client, SSL *ssl_to_server, bool looped) {
             if (maxloop > 5) {
                 maxloop = 0;
                 info("*****maxloop ret = 0\n");
-                break; //����û���ݣ��˳��������� 20211029
+                break; //长期没数据，退出，尝试性 20211029
             }
             //continue;
         }        
-        /* �ӿͻ����շ��͵������� */
+        /* 从客户端收发送到服务器 */
         if (FD_ISSET(socket_to_client, &fd_read) || firstread) {
             isRead = true;
             memset(buffer, 0, sizeof(buffer));
@@ -599,7 +599,7 @@ int transfer(SSL *ssl_to_client, SSL *ssl_to_server, bool looped) {
                         ;
                     //log("%s\n", buffer);
                 }
-            } else if (ret < 0){ // �����ret = 0 �Ƿ����쳣��������ʱ���������
+            } else if (ret < 0){ // 不清楚ret = 0 是否算异常，这里暂时不错出错处理
                 SSL_Warning("Fail to read from client!");
                 info("ret:%d, %d\n", ret, SSL_get_error(ssl_to_client, ret));
                 break;
@@ -613,7 +613,7 @@ int transfer(SSL *ssl_to_client, SSL *ssl_to_server, bool looped) {
             }
         }
 
-        /* �ӷ��������͵��ͻ��� */
+        /* 从服务器发送到客户端 */
         if (FD_ISSET(socket_to_server, &fd_read) || firstread) {
             isRead = true;
             memset(buffer, 0, sizeof(buffer));
@@ -634,7 +634,7 @@ int transfer(SSL *ssl_to_client, SSL *ssl_to_server, bool looped) {
                         ;
                     //log("%s\n", buffer);
                 }
-            } else if (ret < 0){ // �����ret = 0 �Ƿ����쳣��������ʱ���������
+            } else if (ret < 0){ // 不清楚ret = 0 是否算异常，这里暂时不错出错处理
                 SSL_Warning("Fail to read from server!\n");
                 info("ret:%d, %d\n", ret, SSL_get_error(ssl_to_server, ret));
                 break;
@@ -735,7 +735,7 @@ int conn_get_server(char* p, int len, struct sockaddr_in* original_server_addr) 
     name_end = strstr(name_start + 1, " ");
     port_start = strstr(name_start + 1, ":");
 
-    //��url���ƶ��˷������˿�
+    //在url中制定了服务器端口
     memset(portstring, 0, 10);
     if (port_start != NULL)
     {
@@ -743,15 +743,15 @@ int conn_get_server(char* p, int len, struct sockaddr_in* original_server_addr) 
         memcpy(portstring, port_start + 1, portlen);
         original_server_addr->sin_port = htons((short)atoi(portstring));
     }
-    else//��url�У�û���ƶ��������˿ڣ�Ĭ��80�˿�
+    else//在url中，没有制定服务器端口，默认80端口
     {
         original_server_addr->sin_port = htons(80);
         port_start = name_end;
         portlen = 0;
     }
 
-    //�õ���������Ϣ
-    //�����ַ��Ϣ����IP��ַ(202.194.7.1)����ʽ���ֵ�
+    //得到服务器信息
+    //如果地址信息是以IP地址(202.194.7.1)的形式出现的
     namelen = port_start - name_start - 1;
     memset(namestring, 0, 128);
     memcpy(namestring, name_start + 1, namelen);
@@ -761,7 +761,7 @@ int conn_get_server(char* p, int len, struct sockaddr_in* original_server_addr) 
     {
         original_server_addr->sin_addr.s_addr = inet_addr(namestring);
     }
-    //����������ʽ���ֵ�(www.sina.com.cn)
+    //以域名的形式出现的(www.sina.com.cn)
     else
     {
         struct hostent* pHost = (struct hostent* )gethostbyname(namestring);
@@ -784,7 +784,7 @@ int conn_transfer(int socket_to_client, int socket_to_server) {
     //int socket_to_client = SSL_get_fd(ssl_to_client);
     //int socket_to_server = SSL_get_fd(ssl_to_server);
     int ret;
-    char buffer[128 * 1024] = { 0 }; // ���ﻺ�岻�������ܵ���SSL_read��������
+    char buffer[128 * 1024] = { 0 }; // 这里缓冲不够，可能导致SSL_read读不完整
     int maxloop = 0;
     int maxloop2 = 0;
     int maxloop3 = 0;
@@ -832,11 +832,11 @@ int conn_transfer(int socket_to_client, int socket_to_server) {
             if (maxloop > 5) {
                 maxloop = 0;
                 info("*****maxloop ret = 0\n");
-                break; //����û���ݣ��˳��������� 20211029
+                break; //长期没数据，退出，尝试性 20211029
             }
             //continue;
         }
-        /* �ӿͻ����շ��͵������� */
+        /* 从客户端收发送到服务器 */
         if (FD_ISSET(socket_to_client, &fd_read) || firstread) {
             isRead = true;
             memset(buffer, 0, sizeof(buffer));
@@ -859,7 +859,7 @@ int conn_transfer(int socket_to_client, int socket_to_server) {
                     //log("%s\n", buffer);
                 }
             }
-            else if (ret < 0) { // �����ret = 0 �Ƿ����쳣��������ʱ���������
+            else if (ret < 0) { // 不清楚ret = 0 是否算异常，这里暂时不错出错处理
                 SSL_Warning("Fail to read from client!");
                 //info("ret:%d, %d\n", ret, SSL_get_error(ssl_to_client, ret));
                 break;
@@ -874,7 +874,7 @@ int conn_transfer(int socket_to_client, int socket_to_server) {
             }
         }
 
-        /* �ӷ��������͵��ͻ��� */
+        /* 从服务器发送到客户端 */
         if (FD_ISSET(socket_to_server, &fd_read) || firstread) {
             isRead = true;
             memset(buffer, 0, sizeof(buffer));
@@ -897,7 +897,7 @@ int conn_transfer(int socket_to_client, int socket_to_server) {
                     //log("%s\n", buffer);
                 }
             }
-            else if (ret < 0) { // �����ret = 0 �Ƿ����쳣��������ʱ���������
+            else if (ret < 0) { // 不清楚ret = 0 是否算异常，这里暂时不错出错处理
                 SSL_Warning("Fail to read from server!\n");
                 //info("ret:%d, %d\n", ret, SSL_get_error(ssl_to_server, ret));
                 break;
@@ -937,12 +937,12 @@ int main(int argc, char* argv[]) {
     }
     log("gSuite: %s\n", gSuite);
 
-    // ��ʼ��һ��socket������socket�󶨵�8888�˿ڣ�������
+    // 初始化一个socket，将该socket绑定到8888端口，并监听
     int socket = socket_to_client_init(8888);
-    // ���ļ���ȡα��SSL֤��ʱ��Ҫ��RAS˽Կ�͹�Կ
+    // 从文件读取伪造SSL证书时需要的RAS私钥和公钥
     EVP_PKEY* key = create_key();
     //X509* root_x509 = NULL;
-    // ��ʼ��openssl��
+    // 初始化openssl库
     SSL_init();
     root_x509 = get_root_cert();
     info("father:%u\n", getpid());
@@ -950,7 +950,7 @@ int main(int argc, char* argv[]) {
     while (1) {
         int st;
         struct sockaddr_in original_server_addr;
-        // �Ӽ����Ķ˿ڻ��һ���ͻ��˵����ӣ����������ӵ�ԭʼĿ�ĵ�ַ�洢��original_server_addr��
+        // 从监听的端口获得一个客户端的连接，并将该连接的原始目的地址存储到original_server_addr中
         int socket_to_client = get_socket_to_client(socket, &original_server_addr);
         if (socket_to_client < 0) {
             pid_t pid = waitpid(0, &st, WNOHANG);
@@ -970,7 +970,7 @@ int main(int argc, char* argv[]) {
         //        if (forkid)
         forkid = fork();
 
-        // �½�һ���ӽ��̴���������ˣ������̼��������˿ڵȴ���������
+        // 新建一个子进程处理后续事宜，主进程继续监听端口等待后续连接
         if (!forkid) {
             X509* fake_x509;
             SSL* ssl_to_client, * ssl_to_server;
@@ -981,7 +981,7 @@ int main(int argc, char* argv[]) {
 
             info("child:%u\n", getpid());
 
-            //���Ի�ȡ ClientHello ��Ϣͷ�� ServerName
+            //尝试获取 ClientHello 消息头的 ServerName
             length = recv(socket_to_client, buff, 4096, MSG_PEEK);
             int type = get_proxy_type(buff, length);
 
@@ -1000,17 +1000,17 @@ int main(int argc, char* argv[]) {
             }
 
             p = get_server_name(buff, length);
-            // ͨ����õ�ԭʼĿ�ĵ�ַ�����������ķ����������һ���ͷ��������ӵ�socket
+            // 通过获得的原始目的地址，连接真正的服务器，获得一个和服务器连接的socket
             int socket_to_server = get_socket_to_server(&original_server_addr);
-            // ͨ���ͷ��������ӵ�socket����һ���ͷ�������SSL����
+            // 通过和服务器连接的socket建立一个和服务器的SSL连接
             ssl_to_server = SSL_to_server_init(socket_to_server);
 
             if (p != NULL) {
                 char data[10];
                 info("set sname: %s\n", p);
-                SSL_set_tlsext_host_name(ssl_to_server, p); //������������������ƣ���ֹͬһIP��ַ�ж��������
+                SSL_set_tlsext_host_name(ssl_to_server, p); //设置请求服务器的名称，防止同一IP地址有多个服务器
                 memcpy(data, "\x08http/1.1", 9);           
-                SSL_set_alpn_protos(ssl_to_server, (unsigned char *)data, 9);  //����ALPN�������
+                SSL_set_alpn_protos(ssl_to_server, (unsigned char *)data, 9);  //设置ALPN请求参数
             } else {
                 info("set sname len:%d, none\n", length);
             }
@@ -1020,9 +1020,9 @@ int main(int argc, char* argv[]) {
 
             info("SSL to server\n");
 
-            // �ӷ��������֤�飬��ͨ�����֤��α��һ���ٵ�֤��
+            // 从服务器获得证书，并通过这个证书伪造一个假的证书
             fake_x509 = create_fake_certificate(ssl_to_server, key);
-            // ʹ�üٵ�֤��������Լ�����Կ���Ϳͻ��˽���һ��SSL���ӡ����ˣ�SSL�м��˹����ɹ�
+            // 使用假的证书和我们自己的密钥，和客户端建立一个SSL连接。至此，SSL中间人攻击成功
             ssl_to_client = SSL_to_client_init(socket_to_client, fake_x509, key);
             if (SSL_accept(ssl_to_client) <= 0) {
                 transfer(ssl_to_client, ssl_to_server, false); //只为打印转换的ip_dat
@@ -1031,7 +1031,7 @@ int main(int argc, char* argv[]) {
 
             info("SSL to client\n");
  
-            // �ڷ�����SSL���ӺͿͻ���SSL����֮��ת�����ݣ�������������Ϳͻ���֮��ͨ�ŵ�����
+            // 在服务器SSL连接和客户端SSL连接之间转移数据，并输出服务器和客户端之间通信的数据
             if (transfer(ssl_to_client, ssl_to_server, true) < 0) {
                 SSL_terminal(ssl_to_client);
                 SSL_terminal(ssl_to_server);
