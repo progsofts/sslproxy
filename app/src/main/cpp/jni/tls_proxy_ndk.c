@@ -7,6 +7,7 @@
 #include <linux/string.h>
 #include <netdb.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 
 //#include <linux/types.h>
 //#include <linux/socket.h>
@@ -26,13 +27,13 @@
 #define IP_KEY_FILE  "/system/xbin/ip_key.dat"
 
 #define warning(msg) \
-    do { fprintf(stderr, "%lu t:%d, ", getcurtimestamp(), sum); perror(msg); } while(0)
+    do { fprintf(stderr, "%lu pid:%u t:%d, ", getcurtimestamp(), getpid(), sum); perror(msg); } while(0)
 
 #define error(msg) \
-    do { fprintf(stderr, "%lu t:%d, ", getcurtimestamp(), sum); perror(msg); exit(EXIT_FAILURE); } while (0)
+    do { fprintf(stderr, "%lu pid:%u t:%d, ", getcurtimestamp() getpid(), sum); perror(msg); exit(EXIT_FAILURE); } while (0)
 
 #define info(format, args...) \
-    do { printf("%lu t:%d, ", getcurtimestamp(), sum); printf(format, ##args); } while (0)
+    do { printf("%lu pid:%u t:%d, ", getcurtimestamp() getpid(), sum); printf(format, ##args); } while (0)
 
 #define log(format, args...) \
     do { printf(format, ##args); } while (0)
@@ -58,7 +59,7 @@ unsigned long getcurtimestamp(void) {
 }
 
 
-/* ÅÐ¶ÏÎª±¾µØIPµØÖ· */
+/* ï¿½Ð¶ï¿½Îªï¿½ï¿½ï¿½ï¿½IPï¿½ï¿½Ö· */
 bool is_private_ipaddr(struct sockaddr_in* original_server_addr) {
     unsigned long serverip = htonl(original_server_addr->sin_addr.s_addr);
 
@@ -73,7 +74,7 @@ bool is_private_ipaddr(struct sockaddr_in* original_server_addr) {
     return false;
 }
 
-/* ÃæÏò¿Í»§¶Ë´´½¨¼àÌý¶Ë¿Ú */
+/* ï¿½ï¿½ï¿½ï¿½Í»ï¿½ï¿½Ë´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë¿ï¿½ */
 int socket_to_client_init(short int port) {
     int sockfd;
     int on = 1;
@@ -97,11 +98,13 @@ int socket_to_client_init(short int port) {
         shutdown(sockfd, SHUT_RDWR);
         error("Fail to listen socket to client!");
     }
+    int flags = fcntl(sockfd, F_GETFL, 0);
+    fcntl(sockfd, F_SETFL, flags|O_NONBLOCK);
     return sockfd;
 }
 
 
-/* ÏòÄ¿µÄÔ´Õ¾·þÎñÆ÷·¢ÆðsocketÁ¬½Ó */
+/* ï¿½ï¿½Ä¿ï¿½ï¿½Ô´Õ¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½socketï¿½ï¿½ï¿½ï¿½ */
 int get_socket_to_server(struct sockaddr_in* original_server_addr) {
     int sockfd;
 
@@ -117,7 +120,7 @@ int get_socket_to_server(struct sockaddr_in* original_server_addr) {
     return sockfd;
 }
  
-/* ½ÓÊÜ¿Í»§¶Ë·¢ËÍ½¨ÁªsocketÁ¬½Ó */
+/* ï¿½ï¿½ï¿½Ü¿Í»ï¿½ï¿½Ë·ï¿½ï¿½Í½ï¿½ï¿½ï¿½socketï¿½ï¿½ï¿½ï¿½ */
 int get_socket_to_client(int socket, struct sockaddr_in* original_server_addr) {
     int client_fd;
     struct sockaddr_in client_addr;
@@ -125,6 +128,17 @@ int get_socket_to_client(int socket, struct sockaddr_in* original_server_addr) {
     socklen_t server_size = sizeof(struct sockaddr);
     char buf1[32] = { 0 };
     char buf2[32] = { 0 };
+
+    fd_set fd_read;
+    struct timeval timeout;
+    timeout.tv_sec = 5;
+    timeout.tv_usec = 0;
+
+    FD_SET(socket, &fd_read);
+    select(socket + 1, &fd_read, NULL, NULL, &timeout);
+    if (!FD_ISSET(socket, &fd_read)) {
+        return -1;
+    }
 
     memset(&client_addr, 0, client_size);
     memset(original_server_addr, 0, server_size);
@@ -138,13 +152,13 @@ int get_socket_to_client(int socket, struct sockaddr_in* original_server_addr) {
     }
     inet_ntop(AF_INET, &client_addr.sin_addr, buf1, sizeof(buf1));
     inet_ntop(AF_INET, &original_server_addr->sin_addr, buf2, sizeof(buf2));
-    info("New SSL connection from client [%s:%d] to server [%s:%d]\n",
+    info("New SSL connection fdsock(%u) from client [%s:%d] to server [%s:%d]\n", client_fd,
         buf1, ntohs(client_addr.sin_port),
         buf2, ntohs(original_server_addr->sin_port));
     return client_fd;
 }
 
-/* ¶ÁÈ¡CA¸ùÖ¤ÊéÎÄ¼þ£¬ÓÃÓÚ»ñÈ¡skiÖÁ×ÓÖ¤Êéaki */
+/* ï¿½ï¿½È¡CAï¿½ï¿½Ö¤ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú»ï¿½È¡skiï¿½ï¿½ï¿½ï¿½Ö¤ï¿½ï¿½aki */
 X509 *get_root_cert(void) {
     BIO *bio;
     X509 *x509;
@@ -161,14 +175,14 @@ X509 *get_root_cert(void) {
         return 0;
     }
 
-    //´ýÈ·ÈÏÊÇ·ñÓÐÎÊÌâ
+    //ï¿½ï¿½È·ï¿½ï¿½ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     while ((x509 = PEM_read_bio_X509(bio, NULL, NULL, NULL)) != NULL) {
         return x509;
     }
     return 0;
 } 
 
-/* ÉèÖÃCA¸ùÖ¤ÊéÖÁÖ¤ÊéÁ´ */
+/* ï¿½ï¿½ï¿½ï¿½CAï¿½ï¿½Ö¤ï¿½ï¿½ï¿½ï¿½Ö¤ï¿½ï¿½ï¿½ï¿½ */
 int set_root_cert_chain(SSL_CTX *ctx) {
     BIO *bio;
     X509 *x509;
@@ -198,7 +212,7 @@ int set_root_cert_chain(SSL_CTX *ctx) {
     return 1;
 } 
 
-/* ÔØÈëSSL¿â */
+/* ï¿½ï¿½ï¿½ï¿½SSLï¿½ï¿½ */
 void SSL_init() {
     SSL_library_init();
     SSL_load_error_strings();
@@ -206,7 +220,7 @@ void SSL_init() {
 
 void SSL_Warning(char *custom_string) {
     char error_buffer[256] = { 0 };
-    ERR_error_string(ERR_get_error(), error_buffer);
+    ERR_error_string(ERR_get_error(), error_buffer); // err lib 8bits,  func 12bits, reason 12bits
     info("%s %s\n", custom_string, error_buffer);
 }
 
@@ -231,7 +245,7 @@ FILE *create_file(const char *path) {
 }
 
 static void client_keylog_callback(const SSL *ssl, const char *line) {
-    FILE *fp = create_file(KEYLOG_FILES); //ÔÝÊ±¶¼Ð´Èë·þÎñÆ÷µÄÎÄ¼þÄÚ
+    FILE *fp = create_file(KEYLOG_FILES); //ï¿½ï¿½Ê±ï¿½ï¿½Ð´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½
     if (fp != NULL) {
         write_file(fp, line);
     }
@@ -246,7 +260,7 @@ static void server_keylog_callback(const SSL *ssl, const char *line) {
     log("S KEYLOG: %s\n", line);
 }
 
-/* ÏòÄ¿µÄÔ´·þÎñÆ÷½¨Á¢SSLÁ¬½Ó */ 
+/* ï¿½ï¿½Ä¿ï¿½ï¿½Ô´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½SSLï¿½ï¿½ï¿½ï¿½ */ 
 SSL* SSL_to_server_init(int socket) {
     SSL_CTX *ctx;
 
@@ -263,7 +277,7 @@ SSL* SSL_to_server_init(int socket) {
     return ssl;
 }
  
-/* Ïò¿Í»§¶Ë½¨Á¢SSLÁ¬½Ó£¬Ö÷ÒªÎª×¼±¸×ÓÖ¤ÊéÎÄ¼þºÍË½Ô¿ */ 
+/* ï¿½ï¿½Í»ï¿½ï¿½Ë½ï¿½ï¿½ï¿½SSLï¿½ï¿½ï¿½Ó£ï¿½ï¿½ï¿½ÒªÎª×¼ï¿½ï¿½ï¿½ï¿½Ö¤ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½Ë½Ô¿ */ 
 SSL* SSL_to_client_init(int socket, X509 *cert, EVP_PKEY *key) {
     SSL_CTX *ctx;
     ctx = SSL_CTX_new(SSLv23_server_method());
@@ -294,7 +308,7 @@ SSL* SSL_to_client_init(int socket, X509 *cert, EVP_PKEY *key) {
     return ssl;
 }
 
-/* ¹Ø±ÕSSLÁ¬½Ó */  
+/* ï¿½Ø±ï¿½SSLï¿½ï¿½ï¿½ï¿½ */  
 void SSL_terminal(SSL *ssl) {
     SSL_CTX *ctx = SSL_get_SSL_CTX(ssl);
     SSL_shutdown(ssl);
@@ -303,7 +317,7 @@ void SSL_terminal(SSL *ssl) {
         SSL_CTX_free(ctx);
 }
 
-/* ¶ÁÈ¡Ö¤ÊéµÄË½Ô¿ºÍ¹«Ô¿ÐÅÏ¢£¨×ÓÖ¤ÊéºÍ¸ùÖ¤Êé¹«ÓÃ£©£¬ÆäÊµÒ²ÓÃÓÚroot¸ùÖ¤ÊéÇ©ÃûË½Ô¿ */ 
+/* ï¿½ï¿½È¡Ö¤ï¿½ï¿½ï¿½Ë½Ô¿ï¿½Í¹ï¿½Ô¿ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ï¿½Ö¤ï¿½ï¿½Í¸ï¿½Ö¤ï¿½é¹«ï¿½Ã£ï¿½ï¿½ï¿½ï¿½ï¿½ÊµÒ²ï¿½ï¿½ï¿½ï¿½rootï¿½ï¿½Ö¤ï¿½ï¿½Ç©ï¿½ï¿½Ë½Ô¿ */ 
 EVP_PKEY* create_key() {
     EVP_PKEY *key = EVP_PKEY_new();
     RSA *rsa = RSA_new();
@@ -321,7 +335,7 @@ EVP_PKEY* create_key() {
     return key;
 }
 
-/* Î±Ôì×ÓÖ¤Êé£¬´Ó·þÎñÆ÷»ñÈ¡×ÓÖ¤Êé×÷ÎªÄ£°å£¬ÅÅ³ý²¿·ÖÐÅÏ¢£¬²¢ÓÃ¸ùÖ¤ÊéË½Ô¿Ç©Ãû */ 
+/* Î±ï¿½ï¿½ï¿½ï¿½Ö¤ï¿½é£¬ï¿½Ó·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡ï¿½ï¿½Ö¤ï¿½ï¿½ï¿½ï¿½ÎªÄ£ï¿½å£¬ï¿½Å³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ï¿½ï¿½Ã¸ï¿½Ö¤ï¿½ï¿½Ë½Ô¿Ç©ï¿½ï¿½ */ 
 X509* create_fake_certificate(SSL* ssl_to_server, EVP_PKEY *key) {
     //unsigned char buffer[128] = { 0 };
     int location;
@@ -340,7 +354,7 @@ X509* create_fake_certificate(SSL* ssl_to_server, EVP_PKEY *key) {
     X509_set_version(fake_x509, X509_get_version(server_x509));
 
     // huangtest begin
-    /* ´Ó¸ùÖ¤Êé»ñÈ¡ski */
+    /* ï¿½Ó¸ï¿½Ö¤ï¿½ï¿½ï¿½È¡ski */
     if (root_x509 != NULL) {
         for (location = X509_get_ext_count(root_x509) - 1; location >= 0; location--)
         {
@@ -360,7 +374,7 @@ X509* create_fake_certificate(SSL* ssl_to_server, EVP_PKEY *key) {
         ex = X509_get_ext(fake_x509, location);
         NID = OBJ_obj2nid(X509_EXTENSION_get_object(ex));
         #if 0
-        /* »ñÈ¡×ÓÖ¤ÊéµÄski£¬Êµ¼Ê²»¸ÄÕâ¸öÐÅÏ¢ */
+        /* ï¿½ï¿½È¡ï¿½ï¿½Ö¤ï¿½ï¿½ï¿½skiï¿½ï¿½Êµï¿½Ê²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢ */
         if (NID == NID_subject_key_identifier) {
             leaf_ski = (unsigned char *)ex->value->data;
             log("ski length:%d, string:%08x%08x%08x%08x%08x%04x\n", ex->value->length
@@ -372,7 +386,7 @@ X509* create_fake_certificate(SSL* ssl_to_server, EVP_PKEY *key) {
                 , ntohs(*(unsigned short *)(leaf_ski+20)));
         }
         #endif
-        /* »ñÈ¡×ÓÖ¤ÊéakiÐÅÏ¢£¬ÓÃÓÚÌæ»»ÐÂ¸ùÖ¤ÊéµÄskiÐÅÏ¢ */
+        /* ï¿½ï¿½È¡ï¿½ï¿½Ö¤ï¿½ï¿½akiï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½æ»»ï¿½Â¸ï¿½Ö¤ï¿½ï¿½ï¿½skiï¿½ï¿½Ï¢ */
         if ((NID == NID_authority_key_identifier) && (root_ski != NULL)) {
             leaf_aki = (unsigned char *)(X509_EXTENSION_get_data(ex)->data);
             root_aki_len = X509_EXTENSION_get_data(ex)->length;
@@ -388,7 +402,7 @@ X509* create_fake_certificate(SSL* ssl_to_server, EVP_PKEY *key) {
                 , ntohl(*(unsigned int *)(leaf_aki+16))
                 , ntohs(*(unsigned short *)(leaf_aki+20)));
             #endif
-            /* ¸ñÊ½²»Ì«ºÃ£¬ÓÃÄ§¹íÊý×ÖÀ´È·¶¨¿ÉÌæ»»ÐÅÏ¢ */
+            /* ï¿½ï¿½Ê½ï¿½ï¿½Ì«ï¿½Ã£ï¿½ï¿½ï¿½Ä§ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È·ï¿½ï¿½ï¿½ï¿½ï¿½æ»»ï¿½ï¿½Ï¢ */
             if ((root_aki_len == 24) && (root_ski_len == 22)) {
                 memcpy(leaf_aki + 4, root_ski + 2, 20);
             } else {
@@ -396,25 +410,25 @@ X509* create_fake_certificate(SSL* ssl_to_server, EVP_PKEY *key) {
             }
         }
 
-        /* ±£ÁôµÄÀ©Õ¹ÐÅÏ¢ */
-        if ((NID == NID_key_usage)             //¼Ì³Ð
-            || (NID == NID_basic_constraints)  //¼Ì³Ð
-            || (NID == NID_subject_alt_name)   //¼Ì³Ð
-            || (NID == NID_ext_key_usage)      //¼Ì³Ð
-            || (NID == NID_authority_key_identifier) //ÐèÒªÐÞ¸Ä
-            || (NID == NID_subject_key_identifier)   //±£Áô£¬Êµ¼ÊÓ¦¸ÃÊÇ×ÓÖ¤ÊéµÄ¹«Ô¿É¢ÁÐ£¬Ð­ÒéÒªÇóËæ»ú²»ÖØ¸´¼´¿É
-            || (NID == NID_ct_precert_scts))  //²»ÖªµÀÊÇ·ñÐèÒª±£Áô
+        /* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Õ¹ï¿½ï¿½Ï¢ */
+        if ((NID == NID_key_usage)             //ï¿½Ì³ï¿½
+            || (NID == NID_basic_constraints)  //ï¿½Ì³ï¿½
+            || (NID == NID_subject_alt_name)   //ï¿½Ì³ï¿½
+            || (NID == NID_ext_key_usage)      //ï¿½Ì³ï¿½
+            || (NID == NID_authority_key_identifier) //ï¿½ï¿½Òªï¿½Þ¸ï¿½
+            || (NID == NID_subject_key_identifier)   //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Êµï¿½ï¿½Ó¦ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¤ï¿½ï¿½Ä¹ï¿½Ô¿É¢ï¿½Ð£ï¿½Ð­ï¿½ï¿½Òªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ø¸ï¿½ï¿½ï¿½ï¿½ï¿½
+            || (NID == NID_ct_precert_scts))  //ï¿½ï¿½Öªï¿½ï¿½ï¿½Ç·ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½ï¿½
             continue;
-        //X509_delete_ext(fake_x509, location);     È«²¿±£ÁôÔÝÊ±²âÊÔ
+        X509_delete_ext(fake_x509, location);     //È«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ todo
     }
     // huangtest end
 
-    /* ÐÞ¸ÄÐòÁÐºÅ */    
+    /* ï¿½Þ¸ï¿½ï¿½ï¿½ï¿½Ðºï¿½ */    
     ASN1_INTEGER *a = X509_get_serialNumber(fake_x509);
     a->data[0] = a->data[0] + 1;
     //    ASN1_INTEGER_set(X509_get_serialNumber(fake_x509), 4);
 
-    /* ÖØÐ´CA·¢ÐÐÕßÐÅÏ¢£¬Êµ¼Ê×îºÃ´ÓÖ¤ÊéÀïÃæ¶ÁÈ¡£¬ÕâÀïÐ´ËÀËµÃ÷±ØÐëºÍ¸ùÖ¤ÊéÒ»Ò»°ó¶¨ */
+    /* ï¿½ï¿½Ð´CAï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½Êµï¿½ï¿½ï¿½ï¿½Ã´ï¿½Ö¤ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð´ï¿½ï¿½Ëµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¸ï¿½Ö¤ï¿½ï¿½Ò»Ò»ï¿½ï¿½ */
     X509_NAME *issuer = X509_NAME_new();
     //    length = X509_NAME_get_text_by_NID(issuer, NID_organizationalUnitName, buffer, 128);
     //    buffer[length] = ' ';
@@ -441,10 +455,10 @@ X509* create_fake_certificate(SSL* ssl_to_server, EVP_PKEY *key) {
     //    X509_set_notAfter(fake_x509, X509_get_notAfter(server_x509));
     //    X509_set_subject_name(fake_x509, X509_get_subject_name(server_x509));
 
-    /* ÖØÒªÐ´Èë¹«Ô¿ */    
+    /* ï¿½ï¿½ÒªÐ´ï¿½ë¹«Ô¿ */    
     X509_set_pubkey(fake_x509, key);
     //    X509_add_ext(fake_x509, X509_get_ext(server_x509, -1), -1);
-    /* ÓÃCAË½Ô¿Ç©Ãû£¬Êµ¼ÊÓ¦¸ÃÇø·Ö¹«Ô¿ÊÇ×ÓÖ¤Êé¹«Ô¿£¬Ë½Ô¿ÊÇ¸ùÖ¤ÊéË½Ô¿£¬µ«proxy¼òµ¥À´Ëµ¿ÉÒÔÓÃÒ»¸ö */
+    /* ï¿½ï¿½CAË½Ô¿Ç©ï¿½ï¿½ï¿½ï¿½Êµï¿½ï¿½Ó¦ï¿½ï¿½ï¿½ï¿½ï¿½Ö¹ï¿½Ô¿ï¿½ï¿½ï¿½ï¿½Ö¤ï¿½é¹«Ô¿ï¿½ï¿½Ë½Ô¿ï¿½Ç¸ï¿½Ö¤ï¿½ï¿½Ë½Ô¿ï¿½ï¿½ï¿½ï¿½proxyï¿½ï¿½ï¿½ï¿½Ëµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ */
     X509_sign(fake_x509, key, EVP_sha256());
 
     //    X509_print_fp(stderr, fake_x509);
@@ -508,8 +522,8 @@ void write_connectinfo(int socket_to_client, int socket_to_server) {
     fclose(fp);
 }
 
-/* ´¦Àí¿Í»§¶ËºÍ·þÎñÆ÷Ö®¼äÏûÏ¢´«µÝ£¬Ö±µ½Á¬½Ó¹Ø±Õ»òÒì³£ */ 
-int transfer(SSL *ssl_to_client, SSL *ssl_to_server) {
+/* ï¿½ï¿½ï¿½ï¿½Í»ï¿½ï¿½ËºÍ·ï¿½ï¿½ï¿½ï¿½ï¿½Ö®ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½Ý£ï¿½Ö±ï¿½ï¿½ï¿½ï¿½ï¿½Ó¹Ø±Õ»ï¿½ï¿½ì³£ */ 
+int transfer(SSL *ssl_to_client, SSL *ssl_to_server, bool looped) {
     int c_out = 0;
     int c_bytes = 0;
     int s_out = 0;
@@ -517,7 +531,7 @@ int transfer(SSL *ssl_to_client, SSL *ssl_to_server) {
     int socket_to_client = SSL_get_fd(ssl_to_client);
     int socket_to_server = SSL_get_fd(ssl_to_server);
     int ret;
-    char buffer[128 * 1024] = { 0 }; // ÕâÀï»º³å²»¹»£¬¿ÉÄÜµ¼ÖÂSSL_read¶Á²»ÍêÕû
+    char buffer[128 * 1024] = { 0 }; // ï¿½ï¿½ï¿½ï»ºï¿½å²»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Üµï¿½ï¿½ï¿½SSL_readï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     int maxloop = 0;
     int maxloop2 = 0;
     int maxloop3 = 0;
@@ -528,7 +542,8 @@ int transfer(SSL *ssl_to_client, SSL *ssl_to_server) {
     info("SSL Builded. Waiting for transfer\n");
     print_connectinfo(socket_to_client, socket_to_server);
     write_connectinfo(socket_to_client, socket_to_server);
-    while (1) {
+    info("socket_to_client:%u, socket_to_server:%u\n", socket_to_client, socket_to_server);
+    while (looped) {
         int max;
         struct timeval timeout;
         bool isRead = false;
@@ -559,11 +574,11 @@ int transfer(SSL *ssl_to_client, SSL *ssl_to_server) {
             if (maxloop > 5) {
                 maxloop = 0;
                 info("*****maxloop ret = 0\n");
-                break; //³¤ÆÚÃ»Êý¾Ý£¬ÍË³ö£¬³¢ÊÔÐÔ 20211029
+                break; //ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½Ý£ï¿½ï¿½Ë³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 20211029
             }
             //continue;
         }        
-        /* ´Ó¿Í»§¶ËÊÕ·¢ËÍµ½·þÎñÆ÷ */
+        /* ï¿½Ó¿Í»ï¿½ï¿½ï¿½ï¿½Õ·ï¿½ï¿½Íµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ */
         if (FD_ISSET(socket_to_client, &fd_read) || firstread) {
             isRead = true;
             memset(buffer, 0, sizeof(buffer));
@@ -584,7 +599,7 @@ int transfer(SSL *ssl_to_client, SSL *ssl_to_server) {
                         ;
                     //log("%s\n", buffer);
                 }
-            } else if (ret < 0){ // ²»Çå³þret = 0 ÊÇ·ñËãÒì³££¬ÕâÀïÔÝÊ±²»´í³ö´í´¦Àí
+            } else if (ret < 0){ // ï¿½ï¿½ï¿½ï¿½ï¿½ret = 0 ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ì³£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
                 SSL_Warning("Fail to read from client!");
                 info("ret:%d, %d\n", ret, SSL_get_error(ssl_to_client, ret));
                 break;
@@ -598,7 +613,7 @@ int transfer(SSL *ssl_to_client, SSL *ssl_to_server) {
             }
         }
 
-        /* ´Ó·þÎñÆ÷·¢ËÍµ½¿Í»§¶Ë */
+        /* ï¿½Ó·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Íµï¿½ï¿½Í»ï¿½ï¿½ï¿½ */
         if (FD_ISSET(socket_to_server, &fd_read) || firstread) {
             isRead = true;
             memset(buffer, 0, sizeof(buffer));
@@ -619,7 +634,7 @@ int transfer(SSL *ssl_to_client, SSL *ssl_to_server) {
                         ;
                     //log("%s\n", buffer);
                 }
-            } else if (ret < 0){ // ²»Çå³þret = 0 ÊÇ·ñËãÒì³££¬ÕâÀïÔÝÊ±²»´í³ö´í´¦Àí
+            } else if (ret < 0){ // ï¿½ï¿½ï¿½ï¿½ï¿½ret = 0 ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ì³£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
                 SSL_Warning("Fail to read from server!\n");
                 info("ret:%d, %d\n", ret, SSL_get_error(ssl_to_server, ret));
                 break;
@@ -637,7 +652,6 @@ int transfer(SSL *ssl_to_client, SSL *ssl_to_server) {
             info("select ret:%d firstread:%d\n", ret, firstread);
         }
     }
-
     info("c(%d,%d), s(%d,%d)\n", c_out, c_bytes, s_out, s_bytes);
     return -1;
 }
@@ -721,7 +735,7 @@ int conn_get_server(char* p, int len, struct sockaddr_in* original_server_addr) 
     name_end = strstr(name_start + 1, " ");
     port_start = strstr(name_start + 1, ":");
 
-    //ÔÚurlÖÐÖÆ¶¨ÁË·þÎñÆ÷¶Ë¿Ú
+    //ï¿½ï¿½urlï¿½ï¿½ï¿½Æ¶ï¿½ï¿½Ë·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë¿ï¿½
     memset(portstring, 0, 10);
     if (port_start != NULL)
     {
@@ -729,15 +743,15 @@ int conn_get_server(char* p, int len, struct sockaddr_in* original_server_addr) 
         memcpy(portstring, port_start + 1, portlen);
         original_server_addr->sin_port = htons((short)atoi(portstring));
     }
-    else//ÔÚurlÖÐ£¬Ã»ÓÐÖÆ¶¨·þÎñÆ÷¶Ë¿Ú£¬Ä¬ÈÏ80¶Ë¿Ú
+    else//ï¿½ï¿½urlï¿½Ð£ï¿½Ã»ï¿½ï¿½ï¿½Æ¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë¿Ú£ï¿½Ä¬ï¿½ï¿½80ï¿½Ë¿ï¿½
     {
         original_server_addr->sin_port = htons(80);
         port_start = name_end;
         portlen = 0;
     }
 
-    //µÃµ½·þÎñÆ÷ÐÅÏ¢
-    //Èç¹ûµØÖ·ÐÅÏ¢ÊÇÒÔIPµØÖ·(202.194.7.1)µÄÐÎÊ½³öÏÖµÄ
+    //ï¿½Ãµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
+    //ï¿½ï¿½ï¿½ï¿½ï¿½Ö·ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ï¿½IPï¿½ï¿½Ö·(202.194.7.1)ï¿½ï¿½ï¿½ï¿½Ê½ï¿½ï¿½ï¿½Öµï¿½
     namelen = port_start - name_start - 1;
     memset(namestring, 0, 128);
     memcpy(namestring, name_start + 1, namelen);
@@ -747,7 +761,7 @@ int conn_get_server(char* p, int len, struct sockaddr_in* original_server_addr) 
     {
         original_server_addr->sin_addr.s_addr = inet_addr(namestring);
     }
-    //ÒÔÓòÃûµÄÐÎÊ½³öÏÖµÄ(www.sina.com.cn)
+    //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê½ï¿½ï¿½ï¿½Öµï¿½(www.sina.com.cn)
     else
     {
         struct hostent* pHost = (struct hostent* )gethostbyname(namestring);
@@ -770,7 +784,7 @@ int conn_transfer(int socket_to_client, int socket_to_server) {
     //int socket_to_client = SSL_get_fd(ssl_to_client);
     //int socket_to_server = SSL_get_fd(ssl_to_server);
     int ret;
-    char buffer[128 * 1024] = { 0 }; // ÕâÀï»º³å²»¹»£¬¿ÉÄÜµ¼ÖÂSSL_read¶Á²»ÍêÕû
+    char buffer[128 * 1024] = { 0 }; // ï¿½ï¿½ï¿½ï»ºï¿½å²»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Üµï¿½ï¿½ï¿½SSL_readï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     int maxloop = 0;
     int maxloop2 = 0;
     int maxloop3 = 0;
@@ -818,11 +832,11 @@ int conn_transfer(int socket_to_client, int socket_to_server) {
             if (maxloop > 5) {
                 maxloop = 0;
                 info("*****maxloop ret = 0\n");
-                break; //³¤ÆÚÃ»Êý¾Ý£¬ÍË³ö£¬³¢ÊÔÐÔ 20211029
+                break; //ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½Ý£ï¿½ï¿½Ë³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 20211029
             }
             //continue;
         }
-        /* ´Ó¿Í»§¶ËÊÕ·¢ËÍµ½·þÎñÆ÷ */
+        /* ï¿½Ó¿Í»ï¿½ï¿½ï¿½ï¿½Õ·ï¿½ï¿½Íµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ */
         if (FD_ISSET(socket_to_client, &fd_read) || firstread) {
             isRead = true;
             memset(buffer, 0, sizeof(buffer));
@@ -845,7 +859,7 @@ int conn_transfer(int socket_to_client, int socket_to_server) {
                     //log("%s\n", buffer);
                 }
             }
-            else if (ret < 0) { // ²»Çå³þret = 0 ÊÇ·ñËãÒì³££¬ÕâÀïÔÝÊ±²»´í³ö´í´¦Àí
+            else if (ret < 0) { // ï¿½ï¿½ï¿½ï¿½ï¿½ret = 0 ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ì³£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
                 SSL_Warning("Fail to read from client!");
                 //info("ret:%d, %d\n", ret, SSL_get_error(ssl_to_client, ret));
                 break;
@@ -860,7 +874,7 @@ int conn_transfer(int socket_to_client, int socket_to_server) {
             }
         }
 
-        /* ´Ó·þÎñÆ÷·¢ËÍµ½¿Í»§¶Ë */
+        /* ï¿½Ó·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Íµï¿½ï¿½Í»ï¿½ï¿½ï¿½ */
         if (FD_ISSET(socket_to_server, &fd_read) || firstread) {
             isRead = true;
             memset(buffer, 0, sizeof(buffer));
@@ -883,7 +897,7 @@ int conn_transfer(int socket_to_client, int socket_to_server) {
                     //log("%s\n", buffer);
                 }
             }
-            else if (ret < 0) { // ²»Çå³þret = 0 ÊÇ·ñËãÒì³££¬ÕâÀïÔÝÊ±²»´í³ö´í´¦Àí
+            else if (ret < 0) { // ï¿½ï¿½ï¿½ï¿½ï¿½ret = 0 ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ì³£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
                 SSL_Warning("Fail to read from server!\n");
                 //info("ret:%d, %d\n", ret, SSL_get_error(ssl_to_server, ret));
                 break;
@@ -923,30 +937,40 @@ int main(int argc, char* argv[]) {
     }
     log("gSuite: %s\n", gSuite);
 
-    // ³õÊ¼»¯Ò»¸ösocket£¬½«¸Ãsocket°ó¶¨µ½8888¶Ë¿Ú£¬²¢¼àÌý
+    // ï¿½ï¿½Ê¼ï¿½ï¿½Ò»ï¿½ï¿½socketï¿½ï¿½ï¿½ï¿½ï¿½ï¿½socketï¿½ó¶¨µï¿½8888ï¿½Ë¿Ú£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     int socket = socket_to_client_init(8888);
-    // ´ÓÎÄ¼þ¶ÁÈ¡Î±ÔìSSLÖ¤ÊéÊ±ÐèÒªµÄRASË½Ô¿ºÍ¹«Ô¿
+    // ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½È¡Î±ï¿½ï¿½SSLÖ¤ï¿½ï¿½Ê±ï¿½ï¿½Òªï¿½ï¿½RASË½Ô¿ï¿½Í¹ï¿½Ô¿
     EVP_PKEY* key = create_key();
     //X509* root_x509 = NULL;
-    // ³õÊ¼»¯openssl¿â
+    // ï¿½ï¿½Ê¼ï¿½ï¿½opensslï¿½ï¿½
     SSL_init();
     root_x509 = get_root_cert();
+    info("father:%u\n", getpid());
 
     while (1) {
+        int st;
         struct sockaddr_in original_server_addr;
-        // ´Ó¼àÌýµÄ¶Ë¿Ú»ñµÃÒ»¸ö¿Í»§¶ËµÄÁ¬½Ó£¬²¢½«¸ÃÁ¬½ÓµÄÔ­Ê¼Ä¿µÄµØÖ·´æ´¢µ½original_server_addrÖÐ
+        // ï¿½Ó¼ï¿½ï¿½ï¿½ï¿½Ä¶Ë¿Ú»ï¿½ï¿½Ò»ï¿½ï¿½ï¿½Í»ï¿½ï¿½Ëµï¿½ï¿½ï¿½ï¿½Ó£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Óµï¿½Ô­Ê¼Ä¿ï¿½Äµï¿½Ö·ï¿½æ´¢ï¿½ï¿½original_server_addrï¿½ï¿½
         int socket_to_client = get_socket_to_client(socket, &original_server_addr);
-        if (socket_to_client < 0)
+        if (socket_to_client < 0) {
+            pid_t pid = waitpid(0, &st, WNOHANG);
+            while (pid > 0) {
+                info("waitpid pid:%u, st:%u\n", pid, st);
+                pid = waitpid(0, &st, WNOHANG);
+            }
+            fflush(stdout);
             continue;
+        }
         if (is_private_ipaddr(&original_server_addr)) {
             //shutdown(socket_to_client, SHUT_RDWR);
             //continue;
         }
+        fflush(stdout);
 
         //        if (forkid)
         forkid = fork();
 
-        // ÐÂ½¨Ò»¸ö×Ó½ø³Ì´¦ÀíºóÐøÊÂÒË£¬Ö÷½ø³Ì¼ÌÐø¼àÌý¶Ë¿ÚµÈ´ýºóÐøÁ¬½Ó
+        // ï¿½Â½ï¿½Ò»ï¿½ï¿½ï¿½Ó½ï¿½ï¿½Ì´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ì¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë¿ÚµÈ´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         if (!forkid) {
             X509* fake_x509;
             SSL* ssl_to_client, * ssl_to_server;
@@ -955,7 +979,9 @@ int main(int argc, char* argv[]) {
             int length;
             errno = 0;
 
-            //³¢ÊÔ»ñÈ¡ ClientHello ÏûÏ¢Í·µÄ ServerName
+            info("child:%u\n", getpid());
+
+            //ï¿½ï¿½ï¿½Ô»ï¿½È¡ ClientHello ï¿½ï¿½Ï¢Í·ï¿½ï¿½ ServerName
             length = recv(socket_to_client, buff, 4096, MSG_PEEK);
             int type = get_proxy_type(buff, length);
 
@@ -965,7 +991,7 @@ int main(int argc, char* argv[]) {
                     log("%s\n", buff);
                     if (conn_get_server(buff, length, &original_server_addr)) {
                         int socket_to_server = get_socket_to_server(&original_server_addr);
-                        //print_connectinfo(socket_to_client, socket_to_server);
+                        print_connectinfo(socket_to_client, socket_to_server);
                         conn_transfer(socket_to_client, socket_to_server);
                     }
                 }
@@ -974,17 +1000,17 @@ int main(int argc, char* argv[]) {
             }
 
             p = get_server_name(buff, length);
-            // Í¨¹ý»ñµÃµÄÔ­Ê¼Ä¿µÄµØÖ·£¬Á¬½ÓÕæÕýµÄ·þÎñÆ÷£¬»ñµÃÒ»¸öºÍ·þÎñÆ÷Á¬½ÓµÄsocket
+            // Í¨ï¿½ï¿½ï¿½ï¿½Ãµï¿½Ô­Ê¼Ä¿ï¿½Äµï¿½Ö·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½Í·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Óµï¿½socket
             int socket_to_server = get_socket_to_server(&original_server_addr);
-            // Í¨¹ýºÍ·þÎñÆ÷Á¬½ÓµÄsocket½¨Á¢Ò»¸öºÍ·þÎñÆ÷µÄSSLÁ¬½Ó
+            // Í¨ï¿½ï¿½ï¿½Í·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Óµï¿½socketï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½Í·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½SSLï¿½ï¿½ï¿½ï¿½
             ssl_to_server = SSL_to_server_init(socket_to_server);
 
             if (p != NULL) {
                 char data[10];
                 info("set sname: %s\n", p);
-                SSL_set_tlsext_host_name(ssl_to_server, p); //ÉèÖÃÇëÇó·þÎñÆ÷µÄÃû³Æ£¬·ÀÖ¹Í¬Ò»IPµØÖ·ÓÐ¶à¸ö·þÎñÆ÷
+                SSL_set_tlsext_host_name(ssl_to_server, p); //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ£ï¿½ï¿½ï¿½Ö¹Í¬Ò»IPï¿½ï¿½Ö·ï¿½Ð¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
                 memcpy(data, "\x08http/1.1", 9);           
-                SSL_set_alpn_protos(ssl_to_server, (unsigned char *)data, 9);  //ÉèÖÃALPNÇëÇó²ÎÊý
+                SSL_set_alpn_protos(ssl_to_server, (unsigned char *)data, 9);  //ï¿½ï¿½ï¿½ï¿½ALPNï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             } else {
                 info("set sname len:%d, none\n", length);
             }
@@ -994,26 +1020,32 @@ int main(int argc, char* argv[]) {
 
             info("SSL to server\n");
 
-            // ´Ó·þÎñÆ÷»ñµÃÖ¤Êé£¬²¢Í¨¹ýÕâ¸öÖ¤ÊéÎ±ÔìÒ»¸ö¼ÙµÄÖ¤Êé
+            // ï¿½Ó·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¤ï¿½é£¬ï¿½ï¿½Í¨ï¿½ï¿½ï¿½ï¿½ï¿½Ö¤ï¿½ï¿½Î±ï¿½ï¿½Ò»ï¿½ï¿½ï¿½Ùµï¿½Ö¤ï¿½ï¿½
             fake_x509 = create_fake_certificate(ssl_to_server, key);
-            // Ê¹ÓÃ¼ÙµÄÖ¤ÊéºÍÎÒÃÇ×Ô¼ºµÄÃÜÔ¿£¬ºÍ¿Í»§¶Ë½¨Á¢Ò»¸öSSLÁ¬½Ó¡£ÖÁ´Ë£¬SSLÖÐ¼äÈË¹¥»÷³É¹¦
+            // Ê¹ï¿½Ã¼Ùµï¿½Ö¤ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½ï¿½ï¿½ï¿½Ô¿ï¿½ï¿½ï¿½Í¿Í»ï¿½ï¿½Ë½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½SSLï¿½ï¿½ï¿½Ó¡ï¿½ï¿½ï¿½ï¿½Ë£ï¿½SSLï¿½Ð¼ï¿½ï¿½Ë¹ï¿½ï¿½ï¿½ï¿½É¹ï¿½
             ssl_to_client = SSL_to_client_init(socket_to_client, fake_x509, key);
-            if (SSL_accept(ssl_to_client) <= 0)
+            if (SSL_accept(ssl_to_client) <= 0) {
+                transfer(ssl_to_client, ssl_to_server, false); //åªä¸ºæ‰“å°è½¬æ¢çš„ip_dat
                 SSL_Error("Fail to accept client with ssl!");
+            }
 
             info("SSL to client\n");
  
-            // ÔÚ·þÎñÆ÷SSLÁ¬½ÓºÍ¿Í»§¶ËSSLÁ¬½ÓÖ®¼ä×ªÒÆÊý¾Ý£¬²¢Êä³ö·þÎñÆ÷ºÍ¿Í»§¶ËÖ®¼äÍ¨ÐÅµÄÊý¾Ý
-            if (transfer(ssl_to_client, ssl_to_server) < 0) {
-                info("ssl connection shutdown\n");
+            // ï¿½Ú·ï¿½ï¿½ï¿½ï¿½ï¿½SSLï¿½ï¿½ï¿½ÓºÍ¿Í»ï¿½ï¿½ï¿½SSLï¿½ï¿½ï¿½ï¿½Ö®ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½ï¿½Ý£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¿Í»ï¿½ï¿½ï¿½Ö®ï¿½ï¿½Í¨ï¿½Åµï¿½ï¿½ï¿½ï¿½ï¿½
+            if (transfer(ssl_to_client, ssl_to_server, true) < 0) {
                 SSL_terminal(ssl_to_client);
                 SSL_terminal(ssl_to_server);
-                shutdown(socket_to_server, SHUT_RDWR);
-                shutdown(socket_to_client, SHUT_RDWR);
+                info("ssl connection shutdown:%d,%d,%d,%d\n",
+                    shutdown(socket_to_client, SHUT_RDWR),
+                    shutdown(socket_to_server, SHUT_RDWR),
+                    close(socket_to_client),
+                    close(socket_to_server));
                 X509_free(fake_x509);
             }
             exit(0);
         } else {
+            //set_fdsock_fid(forkid, socket_to_client);
+            close(socket_to_client);
             ++sum;
         }
     }
